@@ -40,6 +40,9 @@ en:
     dashboard:
       welcome: "Welcome back, %{name}"
       subtitle: "Here's what's happening with your finances"
+      missing_reporting_fx:
+        title: Missing exchange rates for reporting
+        description: "Cashflow, outflows, and reporting totals omit %{currencies} amounts because no exchange rates into %{currency} are available."
       new: "New"
       sections_aria_label: "Dashboard sections"
       toggle_section: "Toggle section visibility"

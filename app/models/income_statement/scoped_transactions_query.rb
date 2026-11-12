@@ -20,11 +20,10 @@ module IncomeStatement::ScopedTransactionsQuery
       "CASE WHEN #{t}.kind = 'investment_contribution' THEN '#{contribution}' WHEN #{t}.kind = 'loan_payment' THEN 'expense' WHEN ae.amount < 0 THEN 'income' ELSE 'expense' END"
     end
 
-    # Entry amount converted to the nearest exchange rate within the lookback
-    # window, falling back to 1 when no rate exists. Contribution/loan-payment
-    # outflows are flipped positive so they add to expense totals.
+    # Amounts without any stored conversion rate remain NULL, so sums omit them.
     def converted_amount_sql(t)
-      "CASE WHEN #{t}.kind IN ('investment_contribution', 'loan_payment') THEN ABS(ae.amount * COALESCE(er.rate, 1)) ELSE ae.amount * COALESCE(er.rate, 1) END"
+      rate = ExchangeRate.rate_sql(from: "ae.currency", to: ":target_currency", on: "ae.date")
+      "CASE WHEN #{t}.kind IN ('investment_contribution', 'loan_payment') THEN ABS(ae.amount * #{rate}) ELSE ae.amount * #{rate} END"
     end
 
     def entries_join_sql(t)
@@ -35,12 +34,6 @@ module IncomeStatement::ScopedTransactionsQuery
       "JOIN accounts a ON a.id = ae.account_id"
     end
 
-    def exchange_rates_join_sql
-      ExchangeRate.nearest_rate_join_sql("er", from: "ae.currency", to: ":target_currency", date: "ae.date")
-    end
-
-    # Investment activity rows that move money within a portfolio
-    # (transfers, sweeps, exchanges) are neither income nor expenses.
     def investment_activity_label_sql(t)
       <<~SQL.chomp
         AND (

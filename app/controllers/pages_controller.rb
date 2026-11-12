@@ -46,6 +46,7 @@ class PagesController < ApplicationController
 
     @balance_sheet = Current.family.balance_sheet
     @investment_statement = Current.family.investment_statement
+    @missing_reporting_fx_currencies = missing_reporting_fx_currencies
     @accounts = Current.user.accessible_accounts.visible.with_attached_logo
     @reconciliation_indicators = if Current.family.manual_reconciliation?
       Account::ReconciliationIndicator.for_accounts(@accounts)
@@ -134,6 +135,27 @@ class PagesController < ApplicationController
   end
 
   private
+    def missing_reporting_fx_currencies
+      statement = dashboard_income_statement
+      currencies = Entry.joins(:account)
+        .joins("INNER JOIN transactions ON transactions.id = entries.entryable_id AND entries.entryable_type = 'Transaction'")
+        .where(account_id: statement.eligible_accounts.select(:id), excluded: false)
+        .where("entries.date <= ?", Date.current)
+        .merge(Transaction.excluding_pending)
+        .where.not(transactions: { kind: Transaction::BUDGET_EXCLUDED_KINDS })
+        .where("transactions.investment_activity_label IS NULL OR transactions.investment_activity_label NOT IN ('Transfer', 'Sweep In', 'Sweep Out', 'Exchange')")
+        .where.not(currency: Current.family.currency)
+        .distinct
+        .pluck(:currency)
+
+      return [] if currencies.empty?
+
+      currencies - ExchangeRate.where(from_currency: currencies, to_currency: Current.family.currency)
+        .where("rate > 0")
+        .distinct
+        .pluck(:from_currency)
+    end
+
     def preferences_params
       prefs = params.require(:preferences)
       {}.tap do |permitted|

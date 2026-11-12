@@ -325,6 +325,37 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     assert_response :ok
   end
 
+  test "cashflow and outflows use an old stored rate instead of parity" do
+    category = @family.categories.create!(name: "Historical FX")
+    account = @family.accounts.create!(name: "Historical IDR", currency: "IDR", balance: 0, accountable: Depository.new)
+    create_transaction(account: account, amount: 1_000_000, currency: "IDR", category: category, date: Date.current)
+    ExchangeRate.create!(from_currency: "IDR", to_currency: @family.currency, date: 30.days.ago.to_date, rate: 0.0001)
+
+    get root_path
+
+    assert_response :ok
+    nodes = JSON.parse(css_select("[data-sankey-chart-data-value]").first["data-sankey-chart-data-value"]).fetch("nodes")
+    assert_equal 100.0, nodes.find { |node| node.fetch("name") == category.name }.fetch("value")
+    segments = JSON.parse(css_select("[data-donut-chart-segments-value]").first["data-donut-chart-segments-value"])
+    assert_equal 100.0, segments.find { |segment| segment.fetch("name") == category.name }.fetch("amount")
+  end
+
+  test "cashflow and outflows use the earliest later rate when no earlier rate exists" do
+    category = @family.categories.create!(name: "Later FX")
+    account = @family.accounts.create!(name: "Historical IDR", currency: "IDR", balance: 0, accountable: Depository.new)
+    create_transaction(account: account, amount: 1_000_000, currency: "IDR", category: category, date: Date.current)
+    ExchangeRate.create!(from_currency: "IDR", to_currency: @family.currency, date: 1.day.from_now.to_date, rate: 0.0002)
+    ExchangeRate.create!(from_currency: "IDR", to_currency: @family.currency, date: 2.days.from_now.to_date, rate: 0.0003)
+
+    get root_path
+
+    assert_response :ok
+    nodes = JSON.parse(css_select("[data-sankey-chart-data-value]").first["data-sankey-chart-data-value"]).fetch("nodes")
+    assert_equal 200.0, nodes.find { |node| node.fetch("name") == category.name }.fetch("value")
+    segments = JSON.parse(css_select("[data-donut-chart-segments-value]").first["data-donut-chart-segments-value"])
+    assert_equal 200.0, segments.find { |segment| segment.fetch("name") == category.name }.fetch("amount")
+  end
+
   test "dashboard renders sankey chart with subcategories" do
     # Create parent category with subcategory
     parent_category = @family.categories.create!(name: "Shopping", color: "#FF5733")

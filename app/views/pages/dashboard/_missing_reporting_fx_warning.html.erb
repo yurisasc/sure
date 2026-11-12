@@ -1,0 +1,3 @@
+<%= render DS::Alert.new(variant: :warning, title: t("pages.dashboard.missing_reporting_fx.title")) do %>
+  <p><%= t("pages.dashboard.missing_reporting_fx.description", currencies: currencies.to_sentence, currency: Current.family.currency) %></p>
+<% end %>

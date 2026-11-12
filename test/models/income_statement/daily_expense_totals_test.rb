@@ -59,12 +59,12 @@ class IncomeStatement::DailyExpenseTotalsTest < ActiveSupport::TestCase
     assert_equal 200, daily_series.first.total
   end
 
-  test "falls back to no conversion when the day's rate is missing" do
+  test "omits unconvertible expenses from a day's total" do
     eur_account = @family.accounts.create! name: "EUR Checking", currency: "EUR", balance: 1000, accountable: Depository.new
-
     create_transaction(account: eur_account, amount: 100, currency: "EUR", date: Date.current)
+    create_transaction(account: @checking, amount: 10, date: Date.current)
 
-    assert_equal 100, daily_series.first.total
+    assert_equal 10, daily_series.first.total
   end
 
   test "returns days in chronological order" do

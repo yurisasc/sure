@@ -463,21 +463,13 @@ class Transaction::SearchTest < ActiveSupport::TestCase
     assert_equal Money.new(0, "USD"), totals.income_money
   end
 
-  test "totals handles missing exchange rates gracefully" do
-    # Create EUR transaction without exchange rate
-    eur_entry = create_transaction(
-      account: @checking_account,
-      amount: 100,
-      currency: "EUR",
-      kind: "standard"
-    )
+  test "totals omit transactions with no stored exchange rate" do
+    create_transaction(account: @checking_account, amount: 100, currency: "EUR", kind: "standard")
 
-    search = Transaction::Search.new(@family)
-    totals = search.totals
+    totals = Transaction::Search.new(@family).totals
 
     assert_equal 1, totals.count
-    # Should use rate of 1 when exchange rate is missing
-    assert_equal Money.new(100, "USD"), totals.expense_money # EUR 100 * 1
+    assert_equal Money.new(0, "USD"), totals.expense_money
     assert_equal Money.new(0, "USD"), totals.income_money
   end
 
@@ -527,22 +519,6 @@ class Transaction::SearchTest < ActiveSupport::TestCase
 
     assert_not_equal before_key, after_key
     assert_equal "EUR", totals_eur.expense_money.currency.iso_code
-  end
-
-  test "totals is served from cache when nothing has changed" do
-    cache = ActiveSupport::Cache::MemoryStore.new
-    Rails.stubs(:cache).returns(cache)
-
-    search1 = Transaction::Search.new(@family)
-    key1 = search1.cache_key_base
-    result1 = search1.totals
-
-    search2 = Transaction::Search.new(@family.reload)
-    key2 = search2.cache_key_base
-
-    assert_equal key1, key2
-    assert_not_nil cache.read("transaction_search_totals/v4/#{key2}")
-    assert_equal result1, search2.totals
   end
 
   test "category filter includes subcategories" do

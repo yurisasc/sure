@@ -63,6 +63,10 @@
       <%# Keeps the widgets' own months and filters; a preset replaces any custom range. %>
       <%= render UI::PeriodPicker.new(selected: @period, url: root_path, frame: "dashboard_sections", extra_params: @dashboard_view_params.except(:start_date, :end_date)) %>
     </div>
+
+  <% end %>
+  <% if accessible_accounts.any? && @missing_reporting_fx_currencies.any? %>
+    <%= render "pages/dashboard/missing_reporting_fx_warning", currencies: @missing_reporting_fx_currencies %>
   <% end %>
 
   <% if @customizing_dashboard && accessible_accounts.any? %>

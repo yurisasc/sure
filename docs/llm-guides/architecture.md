@@ -40,13 +40,17 @@ preferred currency is used to normalize reports; it does not mean every stored
 amount is already in that currency. [Money](../../lib/money.rb) handles monetary
 operations and formatting, with [ExchangeRate](../../app/models/exchange_rate.rb)
 and its [Provided concern](../../app/models/exchange_rate/provided.rb) supplying
-dated conversion rates. SQL reporting and transfer matching use the latest stored
-rate on or within five days before the entry date. Reports fall back to 1:1 only
-when that window has no rate; transfer matching requires a rate. `Money` never
-converts on its own: adding, subtracting, dividing or ordering two amounts in
-different currencies raises `Money::CurrencyMismatchError` in development and
-test (production reports it and keeps the old result). Convert with
-`exchange_to(currency, date:)` first, at the date that fits the figure.
+dated conversion rates. SQL reporting chooses the latest stored rate on or before
+the amount date, then the earliest later rate; if neither exists, the amount is
+omitted. Empty sums remain zero and averages skip periods with no convertible
+amount. Transfer
+matching intentionally uses a stricter rule: latest rate within five days before
+the entry date, and requires a rate. `Money` never converts on its own: adding,
+subtracting, dividing or ordering two amounts in different currencies raises
+`Money::CurrencyMismatchError` in development and test (production reports it and
+keeps the old result). Convert with `exchange_to(currency, date:)` first, at the
+date that fits the figure.
+
 Mixed-currency paths are covered in
 [test/integration/mixed_currency_test.rb](../../test/integration/mixed_currency_test.rb).
 

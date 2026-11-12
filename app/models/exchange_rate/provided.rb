@@ -1,15 +1,15 @@
 module ExchangeRate::Provided
   extend ActiveSupport::Concern
 
+  CONVERSION_CACHE_VERSION = "v1"
+  NEAREST_RATE_LOOKBACK_DAYS = 5
+
   class_methods do
     def provider
       provider = ENV["EXCHANGE_RATE_PROVIDER"].presence || Setting.exchange_rate_provider
       registry = Provider::Registry.for_concept(:exchange_rates)
       registry.get_provider(provider.to_sym)
     end
-
-    # Maximum number of days to look back for a cached rate before calling the provider.
-    NEAREST_RATE_LOOKBACK_DAYS = 5
 
     # Joins the latest stored rate as `table_alias.rate`, dated on or within
     # the lookback window before `date`. Arguments are trusted SQL expressions such as
@@ -27,6 +27,24 @@ module ExchangeRate::Provided
         ) #{table_alias} ON TRUE
       SQL
     end
+
+
+    # SQL for the conversion rate: latest stored rate on or before the date,
+    # otherwise earliest later rate, otherwise NULL. No provider lookup occurs.
+    # Arguments are trusted SQL expressions (columns, binds, or literals).
+    def rate_sql(from:, to:, on:)
+      <<~SQL.squish
+        CASE WHEN #{from} = #{to} THEN 1 ELSE COALESCE(
+          (SELECT fx.rate FROM exchange_rates fx
+            WHERE fx.from_currency = #{from} AND fx.to_currency = #{to} AND fx.date <= #{on}
+            ORDER BY fx.date DESC LIMIT 1),
+          (SELECT fx.rate FROM exchange_rates fx
+            WHERE fx.from_currency = #{from} AND fx.to_currency = #{to} AND fx.date > #{on}
+            ORDER BY fx.date ASC LIMIT 1)
+        ) END
+      SQL
+    end
+
 
 
     def find_or_fetch_rate(from:, to:, date: Date.current, cache: true)
