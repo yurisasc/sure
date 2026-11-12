@@ -256,7 +256,7 @@ class Transaction::Search
                   )
                   .joins(
                     ActiveRecord::Base.sanitize_sql_array([
-                      "LEFT JOIN exchange_rates er ON (er.date = entries.date AND er.from_currency = entries.currency AND er.to_currency = ?)",
+                      ExchangeRate.nearest_rate_join_sql("er", from: "entries.currency", to: "?", date: "entries.date"),
                       family.currency
                     ])
                   )

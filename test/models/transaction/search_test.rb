@@ -418,6 +418,17 @@ class Transaction::SearchTest < ActiveSupport::TestCase
     assert_equal Money.new(200, "USD"), totals.expense_money
   end
 
+  test "totals converts transactions with the nearest earlier exchange rate" do
+    eur_account = @family.accounts.create!(name: "EUR Checking", currency: "EUR", balance: 0, accountable: Depository.new)
+    create_transaction(account: eur_account, amount: 100, currency: "EUR", kind: "standard")
+    ExchangeRate.create!(from_currency: "EUR", to_currency: @family.currency, rate: 1.2, date: 2.days.ago.to_date)
+    ExchangeRate.create!(from_currency: "EUR", to_currency: @family.currency, rate: 1.1, date: 1.day.ago.to_date)
+
+    totals = Transaction::Search.new(@family).totals
+
+    assert_equal Money.new(110, @family.currency), totals.expense_money
+  end
+
   test "totals handles multi-currency transactions with exchange rates" do
     # Create EUR transaction
     eur_entry = create_transaction(

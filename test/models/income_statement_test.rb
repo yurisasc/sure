@@ -213,6 +213,18 @@ class IncomeStatementTest < ActiveSupport::TestCase
     IncomeStatement.new(@family).daily_expense_series(period: period, category_ids: [ @food_category.id ])
   end
 
+  test "converts expenses with the nearest earlier exchange rate" do
+    foreign_category = @family.categories.create!(name: "Foreign Expenses")
+    foreign_account = @family.accounts.create!(name: "Foreign", currency: "EUR", balance: 0, accountable: Depository.new)
+    create_transaction(account: foreign_account, amount: 100, currency: "EUR", category: foreign_category, date: Date.current)
+    ExchangeRate.create!(from_currency: "EUR", to_currency: @family.currency, date: 2.days.ago.to_date, rate: 1.2)
+    ExchangeRate.create!(from_currency: "EUR", to_currency: @family.currency, date: 1.day.ago.to_date, rate: 1.1)
+
+    total = IncomeStatement.new(@family).expense_totals(period: Period.last_30_days)
+
+    assert_equal 110, total.category_totals.find { |category_total| category_total.category == foreign_category }.total
+  end
+
   test "calculates totals for transactions" do
     income_statement = IncomeStatement.new(@family)
     totals = income_statement.totals(date_range: Period.last_30_days.date_range)

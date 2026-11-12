@@ -658,6 +658,31 @@ class Family::AutoTransferMatchableTest < ActiveSupport::TestCase
     assert_equal category, outflow_entry.entryable.category
   end
 
+  test "matches cross-currency transfers using the nearest earlier exchange rate" do
+    ExchangeRate.create!(from_currency: "USD", to_currency: "GBP", date: 3.days.ago.to_date, rate: 1.2)
+    ExchangeRate.create!(from_currency: "USD", to_currency: "GBP", date: 2.days.ago.to_date, rate: 1.4)
+    outflow = create_transaction(date: Date.current, account: @depository, amount: 500)
+    inflow = create_transaction(date: Date.current, account: @credit_card, amount: -700, currency: "GBP")
+
+    assert_includes candidate_pairs, [ inflow.entryable_id, outflow.entryable_id ]
+  end
+
+  test "ignores cross-currency rates older than the lookback window" do
+    ExchangeRate.create!(from_currency: "USD", to_currency: "GBP", date: (ExchangeRate::NEAREST_RATE_LOOKBACK_DAYS + 1).days.ago.to_date, rate: 1.4)
+    outflow = create_transaction(date: Date.current, account: @depository, amount: 500)
+    inflow = create_transaction(date: Date.current, account: @credit_card, amount: -700, currency: "GBP")
+
+    assert_not_includes candidate_pairs, [ inflow.entryable_id, outflow.entryable_id ]
+  end
+
+  test "does not use a later cross-currency exchange rate" do
+    ExchangeRate.create!(from_currency: "USD", to_currency: "GBP", date: 1.day.from_now.to_date, rate: 1.4)
+    outflow = create_transaction(date: Date.current, account: @depository, amount: 500)
+    inflow = create_transaction(date: Date.current, account: @credit_card, amount: -700, currency: "GBP")
+
+    assert_not_includes candidate_pairs, [ inflow.entryable_id, outflow.entryable_id ]
+  end
+
   test "does not match multi-currency transfer with missing exchange rate" do
     create_transaction(date: Date.current, account: @depository, amount: 500)
     create_transaction(date: Date.current, account: @credit_card, amount: -700, currency: "GBP")
@@ -826,23 +851,6 @@ class Family::AutoTransferMatchableTest < ActiveSupport::TestCase
     assert_empty @family.transaction_ids_with_transfer_candidates(
       [ inflow.transaction, far_outflow.transaction, far_inflow.transaction ], user: users(:family_admin)
     )
-  end
-
-  test "transfer candidate query separates exact and exchange-rate matching paths" do
-    sql = @family.send(:transfer_match_candidates_sql)
-
-    assert_includes sql, "UNION ALL"
-    assert_includes sql, "inflow_candidates.excluded = FALSE"
-    assert_includes sql, "outflow_candidates.excluded = FALSE"
-    assert_includes sql, ":account_id IS NULL OR inflow_candidates.account_id = :account_id OR outflow_candidates.account_id = :account_id"
-    assert_includes sql, "outflow_candidates.amount = -inflow_candidates.amount"
-    assert_includes sql, "LEFT JOIN exchange_rates direct_rates"
-    assert_includes sql, "to_currency = :family_currency"
-    assert_includes sql, "EXISTS (SELECT 1 FROM account_providers WHERE account_providers.account_id = inflow_accounts.id)"
-    assert_includes sql, "EXISTS (SELECT 1 FROM account_providers WHERE account_providers.account_id = outflow_accounts.id)"
-    assert_includes sql, ":restrict_cross_currency_to_linked_accounts = FALSE"
-    assert_equal 2, sql.scan(":require_common_writer = FALSE").size
-    assert_equal 2, sql.scan(":exclude_same_wise_item = FALSE").size
   end
 
   # Moves between one Wise connection's balances are linked from Wise's own

@@ -329,9 +329,9 @@ module Family::AutoTransferMatchable
     # synced from each account currency to the family currency, so a transfer between
     # two non-family currencies (e.g. RUB -> THB in a USD family) has no direct rate;
     # the cross rate is then derived through the family currency
-    # (RUB -> USD / THB -> USD). The rates are plain LEFT JOINs on the unique
-    # (from, to, date) index, so each joins at most one row and the planner can hash
-    # them; a missing rate leaves the tolerance check NULL, which drops the pair.
+    # (RUB -> USD / THB -> USD). Each rate is the nearest stored rate on or within
+    # NEAREST_RATE_LOOKBACK_DAYS before the outflow date (at most one row per join);
+    # no rate in that window leaves the tolerance check NULL, which drops the pair.
     # A zero direct rate is treated as missing so it cannot mask a usable derived rate.
     #
     # Candidates are ordered by match_rank before date_diff: exact same-currency matches
@@ -407,21 +407,9 @@ module Family::AutoTransferMatchable
             outflow_candidates.currency <> inflow_candidates.currency
           )
           JOIN accounts outflow_accounts ON outflow_accounts.id = outflow_candidates.account_id
-          LEFT JOIN exchange_rates direct_rates ON (
-            direct_rates.date = outflow_candidates.date AND
-            direct_rates.from_currency = outflow_candidates.currency AND
-            direct_rates.to_currency = inflow_candidates.currency
-          )
-          LEFT JOIN exchange_rates outflow_family_rates ON (
-            outflow_family_rates.date = outflow_candidates.date AND
-            outflow_family_rates.from_currency = outflow_candidates.currency AND
-            outflow_family_rates.to_currency = :family_currency
-          )
-          LEFT JOIN exchange_rates inflow_family_rates ON (
-            inflow_family_rates.date = outflow_candidates.date AND
-            inflow_family_rates.from_currency = inflow_candidates.currency AND
-            inflow_family_rates.to_currency = :family_currency
-          )
+          #{ExchangeRate.nearest_rate_join_sql("direct_rates", from: "outflow_candidates.currency", to: "inflow_candidates.currency", date: "outflow_candidates.date")}
+          #{ExchangeRate.nearest_rate_join_sql("outflow_family_rates", from: "outflow_candidates.currency", to: ":family_currency", date: "outflow_candidates.date")}
+          #{ExchangeRate.nearest_rate_join_sql("inflow_family_rates", from: "inflow_candidates.currency", to: ":family_currency", date: "outflow_candidates.date")}
           LEFT JOIN (
             SELECT DISTINCT
               route_outflows.account_id AS outflow_account_id,

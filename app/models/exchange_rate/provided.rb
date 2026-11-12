@@ -11,6 +11,24 @@ module ExchangeRate::Provided
     # Maximum number of days to look back for a cached rate before calling the provider.
     NEAREST_RATE_LOOKBACK_DAYS = 5
 
+    # Joins the latest stored rate as `table_alias.rate`, dated on or within
+    # the lookback window before `date`. Arguments are trusted SQL expressions such as
+    # column references or bind placeholders.
+    def nearest_rate_join_sql(table_alias, from:, to:, date:)
+      <<~SQL.squish
+        LEFT JOIN LATERAL (
+          SELECT nearest_rates.rate
+          FROM exchange_rates nearest_rates
+          WHERE nearest_rates.from_currency = #{from}
+            AND nearest_rates.to_currency = #{to}
+            AND nearest_rates.date BETWEEN #{date} - #{NEAREST_RATE_LOOKBACK_DAYS} AND #{date}
+          ORDER BY nearest_rates.date DESC
+          LIMIT 1
+        ) #{table_alias} ON TRUE
+      SQL
+    end
+
+
     def find_or_fetch_rate(from:, to:, date: Date.current, cache: true)
       rate = find_by(from_currency: from, to_currency: to, date: date)
       return rate if rate.present?
